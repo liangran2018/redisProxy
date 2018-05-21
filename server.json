@@ -1,0 +1,27 @@
+
+[
+  {"tableId": "ATable", "addr": ":9001", "ratio": 2},
+  {"tableId": "ATable", "addr": ":9002", "ratio": 2},
+  {"tableId": "ATable", "addr": ":9003", "ratio": 2},
+  {"tableId": "ATable", "addr": ":9004", "ratio": 2},
+  {"tableId": "ATable", "addr": ":9005", "ratio": 2},
+  {"tableId": "ATable", "addr": ":9006", "ratio": 2},
+  {"tableId": "ATable", "addr": ":9001", "ratio": 2},
+  {"tableId": "ATable", "addr": ":9002", "ratio": 2},
+  {"tableId": "ATable", "addr": ":9003", "ratio": 2},
+  {"tableId": "ATable", "addr": ":9004", "ratio": 2},
+  {"tableId": "ATable", "addr": ":9005", "ratio": 2},
+  {"tableId": "ATable", "addr": ":9006", "ratio": 2},
+  {"tableId": "ATable", "addr": ":9001", "ratio": 2},
+  {"tableId": "ATable", "addr": ":9002", "ratio": 2},
+  {"tableId": "ATable", "addr": ":9003", "ratio": 2},
+  {"tableId": "ATable", "addr": ":9004", "ratio": 2},
+  {"tableId": "ATable", "addr": ":9005", "ratio": 2},
+  {"tableId": "ATable", "addr": ":9006", "ratio": 2},
+  {"tableId": "ATable", "addr": ":9001", "ratio": 2},
+  {"tableId": "ATable", "addr": ":9002", "ratio": 2},
+  {"tableId": "ATable", "addr": ":9003", "ratio": 2},
+  {"tableId": "ATable", "addr": ":9004", "ratio": 2},
+  {"tableId": "ATable", "addr": ":9005", "ratio": 2},
+  {"tableId": "ATable", "addr": ":9006", "ratio": 2}
+]
