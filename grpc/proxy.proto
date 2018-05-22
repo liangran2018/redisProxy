@@ -1,0 +1,95 @@
+syntax = "proto3";
+
+package proxy;
+
+option cc_generic_services = true;
+option java_multiple_files = true;
+option java_package = "com.netease.news.rec.common.grpc.streams.iface";
+
+//Get
+message GetRequest {
+    string table = 1;
+    bytes key = 2;
+    bool forceMaster = 3;
+}
+
+message GetResponse {
+    bytes value = 1;
+    int32 code = 2;
+    string msg = 3;
+}
+
+//Set
+message SetRequest {
+    string table = 1;
+    bytes key = 2;
+    bytes value = 3;
+    int32 time = 4;
+}
+
+message SetResponse {
+    int32 code = 1;
+    string msg = 2;
+}
+
+//Hget
+message HgetRequest {
+    string table = 1;
+    bytes key = 2;
+    bytes field = 3;
+    bool forceMaster = 4;
+}
+
+message HgetResponse {
+    bytes value = 1;
+    int32 code = 2;
+    string msg = 3;
+}
+
+//Hset
+message HsetRequest {
+    string table = 1;
+    bytes key = 2;
+    bytes field = 3;
+    bytes value = 4;
+}
+
+message HsetResponse {
+    int32 code = 1;
+    string msg = 2;
+}
+
+//Hmget
+message HmgetRequest {
+    string table = 1;
+    bytes key = 2;
+    repeated bytes fields = 3;
+    bool forceMaster = 4;
+}
+
+message HmgetResponse {
+    repeated bytes value = 1;
+    int32 code = 2;
+    string msg = 3;
+}
+
+//Hmset
+message HmsetRequest {
+    string table = 1;
+    bytes key = 2;
+    map<string,bytes> values = 3;
+}
+
+message HmsetResponse {
+    int32 code = 1;
+    string msg = 2;
+}
+
+service Service {
+    rpc get(GetRequest) returns(GetResponse) {}
+    rpc set(SetRequest) returns(SetResponse) {}
+    rpc hget(HgetRequest) returns(HgetResponse) {}
+    rpc hset(HsetRequest) returns(HsetResponse) {}
+    rpc hmget(HmgetRequest) returns(HmgetResponse) {}
+    rpc hmset(HmsetRequest) returns(HmsetResponse) {}
+}

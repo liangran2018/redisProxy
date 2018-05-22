@@ -6,7 +6,6 @@ import (
 	"net"
 	"time"
 	"sync"
-	"flag"
 	"errors"
 	"os/exec"
 	"syscall"
@@ -19,14 +18,6 @@ import (
 	"git.apache.org/thrift.git/lib/go/thrift"
 	"github.com/spaolacci/murmur3"
 	"github.com/garyburd/redigo/redis"
-)
-
-var (
-	listenAddr = flag.String("listen", "localhost:13936", "listen thrift address")
-)
-
-const (
-	redisFile = "redisServer.json"
 )
 
 type redisAddr struct {
@@ -59,75 +50,20 @@ type RedisProxy struct {
 	ListenAddr string
 }
 
-func Start() *RedisProxy {
-	rp := &RedisProxy{}
-	var err error
-
-	if rp.RedisPool == nil {
-		rp.RedisPool = make(map[string][]MasterSlave, 20)
-		err = rp.loadPikas(redisFile)
-		if err != nil {
-			log.Fatalln("loadPikas err:", err)
-		}
+func New(poollen int, redisPass string, ratio int, zkAddr []string, zkNode string, listenAddr string) *RedisProxy {
+	return &RedisProxy{
+		RedisPool:make(map[string][]MasterSlave, poollen),
+		redisPass:redisPass,
+		ratio:ratio,
+		zkAddr:zkAddr,
+		zkNode:zkNode,
+		signalTrace:make(chan os.Signal),
+		proxyIsClose:make(chan bool),
+		ListenAddr:listenAddr,
 	}
-
-	err = rp.zkInit()
-	if err != nil {
-		log.Fatalln("conn zk err:", err)
-	}
-
-	err = rp.zkRegister()
-	if err != nil {
-		log.Println("reg zk err:", err)
-	}
-
-	go rp.zkWatch(rp.zkNode)
-
-	rp.ListenAddr = *listenAddr
-
-	return rp
-}
-
-func (rp *RedisProxy) close() {
-	signal.Stop(rp.signalTrace)
-	rp.zkConn.Close()
-	close(rp.proxyIsClose)
-}
-
-//conn zk
-func (rp *RedisProxy) zkInit() (err error) {
-	rp.zkAddr = []string{"localhost:2181"}
-	rp.zkConn, _, err = zk.Connect(rp.zkAddr, time.Second * 5)
-	if err != nil {
-		return err
-	} else {
-		rp.zkIsOpen = true
-		return nil
-	}
-}
-
-//online reg zk
-func (rp *RedisProxy) zkRegister() error {
-	rp.zkNode = "/proxy"
-	rp.zkConn.Create(rp.zkNode, []byte("proxy info"), 0, zk.WorldACL(zk.PermAll))
-
-	b, _, err := rp.zkConn.Exists("/proxy/" + *listenAddr)
-	if err != nil {
-		return err
-	}
-
-	if !b {
-		_, err = rp.zkConn.Create("/proxy/"+*listenAddr, []byte(*listenAddr), 0, zk.WorldACL(zk.PermAll))
-		if err != nil {
-			return err
-		}
-	}
-
-	return nil
 }
 
 func (rp *RedisProxy) loadPikas(filename string) error {
-	rp.redisPass = "Kci9y3D900"
 	v := make([]redisAddr, 50)
 	data, err := ioutil.ReadFile(filename)
 	if err != nil {
@@ -144,15 +80,13 @@ func (rp *RedisProxy) loadPikas(filename string) error {
 			MasterSlave{Master: rp.newPool(v[i].Addr), Slave: rp.newPool(v[i+len(v)>>1].Addr)})
 	}
 
-	rp.ratio = 2
-
 	return nil
 }
 
 func (rp *RedisProxy) newPool(addr string) *ConnPool {
 	return NewConnectionPool(
 		4000,
-		0,
+		100,
 		60*time.Second,
 		3,
 		func() (redis.Conn, error) {
@@ -163,12 +97,70 @@ func (rp *RedisProxy) newPool(addr string) *ConnPool {
 			return conn, nil
 		},
 
-		func(c *Conn) {
-			c.con.Close()
+		func(c redis.Conn) {
+			c.Close()
 		},
 	)
 }
 
+func (rp *RedisProxy) close() {
+	signal.Stop(rp.signalTrace)
+	rp.zkConn.Close()
+	close(rp.proxyIsClose)
+}
+
+//conn zk
+func (rp *RedisProxy) zkInit() (err error) {
+	var eventChan <-chan zk.Event
+	rp.zkConn, eventChan, err = zk.Connect(rp.zkAddr, time.Second * 3)
+	if err != nil {
+		return err
+	}
+
+	for {
+		rp.zkIsOpen = false
+		select {
+		case connEvent := <- eventChan:
+			if connEvent.State == zk.StateConnected {
+				rp.zkIsOpen = true
+			}
+		case <-time.After(time.Second * 3): // 3秒仍未连接成功则返回连接超时
+			return errors.New("connect to zookeeper server timeout!")
+		}
+
+		if rp.zkIsOpen {
+			break
+		}
+	}
+
+	return nil
+}
+
+//online reg zk
+func (rp *RedisProxy) zkRegister() error {
+	rp.zkConn.Create(rp.zkNode, []byte("proxy info"), 0, zk.WorldACL(zk.PermAll))
+
+	b, _, err := rp.zkConn.Exists(rp.zkNode + "/" + rp.ListenAddr)
+	if err != nil {
+		return err
+	}
+
+	//flags有4种取值：
+	//0:永久，除非手动删除
+	//zk.FlagEphemeral = 1:短暂，session断开则改节点也被删除
+	//zk.FlagSequence  = 2:会自动在节点后面添加序号
+	//3:Ephemeral和Sequence，即，短暂且自动添加序号
+	if !b {
+		_, err = rp.zkConn.Create(rp.zkNode + "/" + rp.ListenAddr, []byte(rp.ListenAddr), 0, zk.WorldACL(zk.PermAll))
+		if err != nil {
+			return err
+		}
+	}
+
+	return nil
+}
+
+//watch zk
 func (rp *RedisProxy) zkWatch(node string) {
 	if rp.proxyIsClose == nil {
 		rp.proxyIsClose = make(chan bool)
@@ -184,10 +176,10 @@ func (rp *RedisProxy) zkWatch(node string) {
 		event := <-rp.proxyIsClose
 		rp.zkWg.Add(1)
 		if event {
-			rp.zkConn.Delete("/proxy/"+*listenAddr, 0)
+			rp.zkConn.Delete(rp.zkNode + "/" + rp.ListenAddr, 0)
 			rp.zkWg.Done()
 		} else {
-			rp.zkConn.Create("/proxy/"+*listenAddr, []byte(*listenAddr), 0, zk.WorldACL(zk.PermAll))
+			rp.zkConn.Create(rp.zkNode + "/" + rp.ListenAddr, []byte(rp.ListenAddr), 0, zk.WorldACL(zk.PermAll))
 			rp.zkWg.Done()
 		}
 		rp.zkWg.Wait()

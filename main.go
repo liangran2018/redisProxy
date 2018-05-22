@@ -5,33 +5,60 @@ import (
 	"log"
 	"flag"
 	"compress/zlib"
-	"proxy/proxy/gen-go/proxy"
+	"redisProxy/gen-go/proxy"
 
-	"git.apache.org/thrift.git/lib/go/thrift"
 	"golang.org/x/net/context"
 	"github.com/garyburd/redigo/redis"
+	"git.apache.org/thrift.git/lib/go/thrift"
 )
 
-var redisProxy *RedisProxy
+var (
+	redisProxy *RedisProxy
+	listenAddr = flag.String("listen", "localhost:13936", "listen thrift address")
+	graceful = flag.Bool("graceful", false, "listen on fd open 3 (internal use only)")
+)
 
 const (
 	defaultTime = 24 * 60 * 60
 	maxTime     = 6 * 30 * defaultTime
+	redisFile = "server.json"
 )
 
 type server struct {}
 
 func main() {
-	graceful := flag.Bool("graceful", false, "listen on fd open 3 (internal use only)")
 	flag.Parse()
 
-	redisProxy = Start()
+	redisProxy = New(20, "Kci9y3D900", 2, []string{"localhost:2181"}, "/proxy", *listenAddr)
+
+	var err error
+
+	if redisProxy.RedisPool == nil {
+		redisProxy.RedisPool = make(map[string][]MasterSlave, 20)
+	}
+
+	err = redisProxy.loadPikas(redisFile)
+	if err != nil {
+		log.Fatalln("loadPikas err:", err)
+	}
+
+	err = redisProxy.zkInit()
+	if err != nil {
+		log.Fatalln("conn zk err:", err)
+	}
+
+	err = redisProxy.zkRegister()
+	if err != nil {
+		log.Println("reg zk err:", err)
+	}
+
+	go redisProxy.zkWatch(redisProxy.zkNode)
 
 	handler := &server{}
 	processor := proxy.NewServiceProcessor(handler)
 	serverTransport, err := thrift.NewTServerSocket(redisProxy.ListenAddr)
 	if err != nil {
-		log.Fatalln("Error:", err)
+		log.Fatalln("thrift new socket err:", err)
 	}
 
 	transportFactory := thrift.NewTZlibTransportFactoryWithFactory(zlib.BestSpeed, thrift.NewTBufferedTransportFactory(8192))
@@ -75,7 +102,7 @@ func (s *server) SetUserFeature(ctx context.Context, request *proxy.SetRequest) 
 	}
 
 	var conn *Conn
-	key, connPool := RedisProxy.GetMasterConn(request.Table, request.Key)
+	key, connPool := redisProxy.GetMasterConn(request.Table, request.Key)
 	conn, err = connPool.Pop()
 	if err != nil {
 		return &proxy.SetResponse{Code: 1, Msg: err.Error()}, nil
