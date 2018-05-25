@@ -112,6 +112,7 @@ func (rp *RedisProxy) close() {
 //conn zk
 func (rp *RedisProxy) zkInit() (err error) {
 	var eventChan <-chan zk.Event
+	num := 0
 	rp.zkConn, eventChan, err = zk.Connect(rp.zkAddr, time.Second * 3)
 	if err != nil {
 		return err
@@ -123,6 +124,8 @@ func (rp *RedisProxy) zkInit() (err error) {
 		case connEvent := <- eventChan:
 			if connEvent.State == zk.StateConnected {
 				rp.zkIsOpen = true
+			} else if connEvent.State == zk.StateConnecting {
+				num++
 			}
 		case <-time.After(time.Second * 3): // 3秒仍未连接成功则返回连接超时
 			return errors.New("connect to zookeeper server timeout!")
@@ -130,6 +133,10 @@ func (rp *RedisProxy) zkInit() (err error) {
 
 		if rp.zkIsOpen {
 			break
+		}
+
+		if num >= 3 {
+			return errors.New("connect to zookeeper server timeout!")
 		}
 	}
 
