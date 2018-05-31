@@ -1,7 +1,7 @@
 package main
 
 import (
-	"proxy/proxy/gen-go/proxy"
+	"redisProxy/gen-go/proxy"
 	"git.apache.org/thrift.git/lib/go/thrift"
 	"log"
 	"fmt"
